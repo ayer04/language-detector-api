@@ -1,0 +1,10 @@
+fastapi==0.112.0
+uvicorn[standard]==0.30.6
+langdetect==1.0.9
+langid==1.1.6
+pycountry==24.6.1
+redis==5.0.7
+pydantic==2.8.2
+# Optional: wenn du FastText nutzen willst, füge EINEN der folgenden Einträge hinzu
+# fasttext==0.9.2            # benötigt Build-Tools (kann auf Windows tricky sein)
+# fasttext-wheel==0.9.2      # inoffizielle Wheels; falls verfügbar, einfacher zu installieren

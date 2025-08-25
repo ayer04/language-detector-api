@@ -3,6 +3,7 @@ import os
 from typing import List
 from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .schemas import TextIn, BatchIn, DetectOut, AltCandidate
 from .auth import api_key_auth
@@ -54,3 +55,7 @@ def detect_batch(payload: BatchIn, api_key: str = Depends(api_key_auth)):
     data = [DetectOut(**r).dict() for r in results]
     from json import dumps
     return Response(content=dumps(data), media_type="application/json", headers=headers)
+
+@app.get("/", include_in_schema=False)
+def root():
+    return {"status": "ok", "engine": detector.engine_name}

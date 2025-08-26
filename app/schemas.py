@@ -1,4 +1,4 @@
-
+# app/schemas.py
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -10,10 +10,12 @@ class BatchIn(BaseModel):
 
 class AltCandidate(BaseModel):
     language: str
+    language_name: str         # <-- NEU
     confidence: float
 
 class DetectOut(BaseModel):
     language: str
+    language_name: str         # <-- NEU
     iso639_3: Optional[str] = None
     confidence: float
     alternatives: List[AltCandidate]

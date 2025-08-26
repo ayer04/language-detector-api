@@ -1,8 +1,59 @@
-
 import os
 import math
 from typing import List, Tuple, Dict
 from .utils import clean_text, is_garbage_text
+
+# ===== NEW: simple map from ISO 639-1 to readable names =====
+_LANG_NAME_MAP: Dict[str, str] = {
+    "en": "English",
+    "de": "German",
+    "nl": "Dutch",
+    "lb": "Luxembourgish",
+    "fr": "French",
+    "es": "Spanish",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "tr": "Turkish",
+    "ar": "Arabic",
+    "ru": "Russian",
+    "zh": "Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "pl": "Polish",
+    "sv": "Swedish",
+    "no": "Norwegian",
+    "da": "Danish",
+    "fi": "Finnish",
+    "el": "Greek",
+    "cs": "Czech",
+    "ro": "Romanian",
+    "bg": "Bulgarian",
+    "uk": "Ukrainian",
+    "hu": "Hungarian",
+    "sr": "Serbian",
+    "hr": "Croatian",
+    "sk": "Slovak",
+    "sl": "Slovene",
+    "et": "Estonian",
+    "lv": "Latvian",
+    "lt": "Lithuanian",
+    "ga": "Irish",
+    "is": "Icelandic",
+    "mt": "Maltese",
+    # ... beliebig erweiterbar
+}
+
+def _lang_name(code: str) -> str:
+    if not code:
+        return "Unknown"
+    return _LANG_NAME_MAP.get(code.lower(), code)
+
+# ===== Optional: einheitlich runden, damit kein e-20 angezeigt wird =====
+def _round4(x: float) -> float:
+    try:
+        return round(float(x), 4)
+    except Exception:
+        return 0.0
 
 # Optionale Engines
 _HAS_FASTTEXT = False
@@ -44,7 +95,9 @@ class Detector:
         t = clean_text(text)
         if is_garbage_text(t):
             return {
+                # Fix: 'und' (undefined), nicht 'and'
                 "language": "und",
+                "language_name": "Unknown",
                 "confidence": 0.0,
                 "alternatives": [],
                 "engine": self.engine_name,
@@ -63,30 +116,43 @@ class Detector:
         langs = [lab.replace("__label__", "") for lab in labels[0]] if labels and labels[0] else []
         confs = probs[0] if probs and probs[0] is not None else []
         if not langs:
-            return {"language": "und", "confidence": 0.0, "alternatives": [], "engine": "fasttext"}
+            return {"language": "und", "language_name": "Unknown", "confidence": 0.0, "alternatives": [], "engine": "fasttext"}
+
         primary = langs[0]
-        primary_conf = float(confs[0]) if confs else 0.0
+        primary_conf = _round4(float(confs[0]) if confs else 0.0)
+
         alts = []
         for l, p in zip(langs[1:], confs[1:]):
-            alts.append({"language": l, "confidence": float(p)})
-        return {"language": primary, "confidence": primary_conf, "alternatives": alts, "engine": "fasttext"}
+            alts.append({
+                "language": l,                     # ISO 639-1 Code
+                "language_name": _lang_name(l),    # Lesbarer Name
+                "confidence": _round4(float(p)),
+            })
+
+        return {
+            "language": primary,                    # ISO 639-1 Code
+            "language_name": _lang_name(primary),   # Lesbarer Name (z. B. 'German')
+            "confidence": primary_conf,
+            "alternatives": alts,
+            "engine": "fasttext",
+        }
 
     def _detect_ensemble(self, t: str):
         # langdetect
         try:
-            ld_candidates = detect_langs(t)  # returns like [LangProb('en',0.99), ...]
+            ld_candidates = detect_langs(t)  # [LangProb('en',0.99), ...]
             ld_map: Dict[str, float] = {c.lang: float(c.prob) for c in ld_candidates}
         except Exception:
             ld_map = {}
 
-        # langid (scores sind Log-Prob-ähnlich; nutzen Softmax zur Normalisierung)
+        # langid (Scores → Softmax)
         li_rank: List[Tuple[str, float]] = langid.rank(t)
         li_langs = [l for l, s in li_rank]
         li_scores = [float(s) for l, s in li_rank]
         li_probs = _softmax(li_scores)
         li_map: Dict[str, float] = {l: p for l, p in zip(li_langs, li_probs)}
 
-        # Kombinieren (Gewichtung langdetect etwas höher)
+        # Kombinieren
         combined: Dict[str, float] = {}
         for l, p in ld_map.items():
             combined[l] = combined.get(l, 0.0) + 0.6 * p
@@ -101,7 +167,19 @@ class Detector:
         # Sortiert
         ordered = sorted(combined.items(), key=lambda x: x[1], reverse=True)
         if not ordered:
-            return {"language": "und", "confidence": 0.0, "alternatives": [], "engine": "langid+langdetect"}
+            return {"language": "und", "language_name": "Unknown", "confidence": 0.0, "alternatives": [], "engine": "langid+langdetect"}
+
         primary, pconf = ordered[0]
-        alts = [{"language": l, "confidence": float(c)} for l, c in ordered[1:4]]
-        return {"language": primary, "confidence": float(pconf), "alternatives": alts, "engine": "langid+langdetect"}
+        alts = [{
+            "language": l,
+            "language_name": _lang_name(l),
+            "confidence": _round4(float(c)),
+        } for l, c in ordered[1:4]]
+
+        return {
+            "language": primary,
+            "language_name": _lang_name(primary),
+            "confidence": _round4(float(pconf)),
+            "alternatives": alts,
+            "engine": "langid+langdetect",
+        }
